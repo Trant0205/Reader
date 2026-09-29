@@ -501,11 +501,14 @@ async function openDoc(id) {
   // 还原文档内标注
   applyAllAnnots();
   renderAnnPanel();
-  // 恢复进度
+  // 恢复进度（瞬时，不滚动动画）
   const reader = $('#reader');
+  const oldBehavior = reader.style.scrollBehavior;
+  reader.style.scrollBehavior = 'auto';
   reader.scrollTop = 0;
   requestAnimationFrame(() => {
     reader.scrollTop = (d.ratio || 0) * (reader.scrollHeight - reader.clientHeight);
+    reader.style.scrollBehavior = oldBehavior;
   });
 }
 
