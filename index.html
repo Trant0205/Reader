@@ -134,7 +134,7 @@ input{font-family:inherit}
 
 /* 阅读区 */
 #readerWrap{flex:1;position:relative;display:flex;flex-direction:column;min-width:0}
-#reader{flex:1;overflow-y:auto;scroll-behavior:smooth}
+#reader{flex:1;overflow-y:auto}
 #article{
   max-width:760px;margin:0 auto;padding:64px 56px 120px;
   font-size:17px;line-height:2.05;letter-spacing:.4px;text-align:justify;
@@ -793,7 +793,7 @@ function renderAnnPanel() {
     </div>`).join('') : '<div style="padding:14px;color:var(--ink-soft);font-size:13px;text-align:center">本篇暂无标注<br>选中文字即可添加</div>';
   $('#annItems').querySelectorAll('.annitem').forEach(el => el.onclick = () => {
     const span = art.querySelector(`span.ann[data-aid="${el.dataset.id}"]`);
-    if (span) { span.scrollIntoView({ behavior: 'smooth', block: 'center' }); span.classList.add('flash'); setTimeout(() => span.classList.remove('flash'), 1700); }
+    if (span) { span.scrollIntoView({ behavior: 'instant', block: 'center' }); span.classList.add('flash'); setTimeout(() => span.classList.remove('flash'), 1700); }
   });
 }
 
@@ -845,7 +845,7 @@ function scrollToOffset(off, len) {
           const s = document.createElement('span');
           s.className = 'flash';
           r.surroundContents(s);
-          s.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          s.scrollIntoView({ behavior: 'instant', block: 'center' });
           setTimeout(() => {
             const p = s.parentNode;
             while (s.firstChild) p.insertBefore(s.firstChild, s);
