@@ -147,6 +147,8 @@ input{font-family:inherit}
 #article h3{font-size:19px}
 #article p{margin:.55em 0;text-indent:2em}
 #article li p,#article blockquote p{text-indent:0}
+#article p:has(img){text-indent:0;text-align:center}
+#article p:has(> strong:first-child){text-indent:0}
 #article img{max-width:100%}
 #article table{border-collapse:collapse;margin:1em auto}
 #article td,#article th{border:1px solid var(--line);padding:6px 12px;font-size:15px}
