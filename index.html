@@ -368,6 +368,7 @@ input{font-family:inherit}
       <button class="modebtn on" data-m="hl">高光</button>
       <button class="modebtn" data-m="ul">下划线</button>
       <button class="modebtn" id="noteToggle">备注</button>
+      <button class="modebtn" id="delAnnBtn" style="color:#a33">删除标记</button>
       <div id="noteRow"><textarea id="noteInput" placeholder="写点备注…（可留空直接点颜色保存）"></textarea></div>
     </div>
 
@@ -758,6 +759,20 @@ $('#noteToggle').onmousedown = e => {
   if (row.style.display === 'block') $('#noteInput').focus();
 };
 $('#noteInput').addEventListener('mousedown', e => e.stopPropagation());
+
+/* 批量删除选区内的标注 */
+$('#delAnnBtn').onmousedown = async e => {
+  e.preventDefault();
+  if (!pendingRange || !currentDoc) { hideSelBar(); return; }
+  const { start, end } = rangeOffsets(pendingRange);
+  const hit = annots.filter(a => a.docId === currentDoc.id && a.start < end && a.end > start);
+  if (!hit.length) { hideSelBar(); return; }
+  for (const a of hit) await idb.del('annots', a.id);
+  annots = annots.filter(a => !hit.includes(a));
+  window.getSelection().removeAllRanges();
+  hideSelBar();
+  refreshAnnots();
+};
 
 async function saveAnnotation() {
   if (!pendingRange || !currentDoc) return;
