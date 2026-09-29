@@ -606,6 +606,31 @@ document.addEventListener('click', e => {
   }
 });
 
+/* 触屏手势：正文区右滑唤出目录，左滑收起 */
+(function tocSwipe() {
+  const reader = $('#reader');
+  let sx = 0, sy = 0, active = false;
+  reader.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { active = false; return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; active = true;
+  }, { passive: true });
+  reader.addEventListener('touchend', e => {
+    if (!active) return;
+    active = false;
+    const dx = e.changedTouches[0].clientX - sx;
+    const dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return; // 横向位移主导才算
+    if (dx > 0) drawer.classList.add('open');
+    else drawer.classList.remove('open');
+  }, { passive: true });
+  // 抽屉自身左滑也可收起
+  drawer.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - sx;
+    if (drawer.classList.contains('open') && sx && dx < -60) drawer.classList.remove('open');
+  }, { passive: true });
+  drawer.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+})();
+
 /* ================= 阅读进度 ================= */
 let scrollTimer = null;
 $('#reader').addEventListener('scroll', () => {
@@ -1053,6 +1078,8 @@ async function afterImport() {
   const saved = localStorage.getItem('dl-theme') || 'read';
   applyTheme(saved);
   if (window.matchMedia('(max-width:720px)').matches) $('#library').classList.add('collapsed');
+  if ('ontouchstart' in window)
+    $('#welcome p').innerHTML = '上传 .docx 文档，即刻获得道林纸般的阅读质感。<br>在正文区域右滑唤出目录、左滑收起；长按选中文字即可标注。<br>所有数据仅保存在本机浏览器中。';
   document.querySelectorAll('#themeSeg button').forEach(b => b.onclick = () => {
     applyTheme(b.dataset.t);
     localStorage.setItem('dl-theme', b.dataset.t);
