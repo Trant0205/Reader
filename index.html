@@ -522,7 +522,7 @@ function buildToc() {
     return `<a class="toc-item lv${lv}" data-t="${h.id}">${esc(h.textContent)}</a>`;
   }).join('');
   tree.querySelectorAll('.toc-item').forEach(a => a.onclick = () => {
-    document.getElementById(a.dataset.t)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById(a.dataset.t)?.scrollIntoView({ behavior: 'instant', block: 'start' });
   });
 }
 
