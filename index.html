@@ -502,25 +502,84 @@ function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<':
 async function importFiles(files) {
   const docxFiles = [...files].filter(f => /\.docx$/i.test(f.name));
   const skipped = files.length - docxFiles.length;
+  let replaced = 0, droppedAnn = 0, lastDoc = null;
   for (const f of docxFiles) {
     const buf = await f.arrayBuffer();
     let text = '';
     try { text = (await mammoth.extractRawText({ arrayBuffer: buf })).value; } catch (e) {}
+    const name = f.name.replace(/\.docx$/i, '');
+    const exist = docs.find(d => d.name === name);
+    if (exist) {
+      // 同名重传：替换内容，保留 id/标签/进度，标注重锚定
+      exist.blob = new Blob([buf], { type: f.type });
+      exist.text = text;
+      await idb.put('docs', exist);
+      // 锚定须在「渲染后文本」上进行，与标注偏移量同源
+      let domText = '';
+      try {
+        const html = (await mammoth.convertToHtml({ arrayBuffer: buf }, { styleMap })).value;
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        domText = div.textContent;
+      } catch (e) { domText = text; }
+      droppedAnn += await reanchorAnnots(exist.id, domText);
+      replaced++; lastDoc = exist;
+      continue;
+    }
     const rec = {
-      id: uid(), name: f.name.replace(/\.docx$/i, ''),
+      id: uid(), name,
       blob: new Blob([buf], { type: f.type }), text,
       tags: [], ratio: 0, added: Date.now()
     };
     await idb.put('docs', rec);
-    docs.push(rec);
+    docs.push(rec); lastDoc = rec;
   }
   docs.sort((a, b) => b.added - a.added);
   renderTagBar(); renderDocList();
   if (skipped > 0) alert(`已跳过 ${skipped} 个非 .docx 文件（旧版 .doc 请先在 Word 中另存为 .docx）`);
-  if (docxFiles.length) {
-    const last = docs.find(d => d.name === docxFiles[docxFiles.length - 1].name.replace(/\.docx$/i, ''));
-    if (last) openDoc(last.id);
+  if (replaced > 0) alert(`已更新 ${replaced} 篇同名文档，标注已按原文重新定位${droppedAnn ? `，${droppedAnn} 条标注因对应内容被删除而移除` : ''}。`);
+  if (lastDoc) openDoc(lastDoc.id);
+}
+
+/* ---------- 标注重锚定：文档修订后按 quote+上下文重新定位 ---------- */
+async function reanchorAnnots(docId, newText) {
+  let dropped = 0;
+  for (const a of annots.filter(x => x.docId === docId)) {
+    if (!a.quote) continue; // 旧格式标注（无锚点）保留原偏移
+    const pos = findAnchor(newText, a);
+    if (pos < 0) {
+      annots = annots.filter(x => x.id !== a.id);
+      await idb.del('annots', a.id);
+      dropped++;
+    } else {
+      a.start = pos; a.end = pos + a.quote.length; a.text = a.quote.slice(0, 200);
+      await idb.put('annots', a);
+    }
   }
+  return dropped;
+}
+function findAnchor(text, a) {
+  const cands = [];
+  let i = 0;
+  while ((i = text.indexOf(a.quote, i)) >= 0) { cands.push(i); i++; }
+  if (!cands.length) return -1;
+  const score = p => {
+    let s = 0;
+    const pre = text.slice(Math.max(0, p - 32), p);
+    const post = text.slice(p + a.quote.length, p + a.quote.length + 32);
+    for (let k = 0; k < Math.min(a.prefix.length, pre.length); k++) {
+      if (a.prefix[a.prefix.length - 1 - k] === pre[pre.length - 1 - k]) s++; else break;
+    }
+    for (let k = 0; k < Math.min(a.suffix.length, post.length); k++) {
+      if (a.suffix[k] === post[k]) s++; else break;
+    }
+    return s;
+  };
+  let best = cands[0], bs = score(cands[0]);
+  for (const p of cands) { const s = score(p); if (s > bs) { bs = s; best = p; } }
+  if (bs === 0 && cands.length > 1)
+    best = cands.reduce((x, y) => Math.abs(y - a.start) < Math.abs(x - a.start) ? y : x); // 多处命中且无上下文线索：取离旧位置最近的
+  return best;
 }
 
 $('#uploadBtn').onclick = () => $('#fileInput').click();
@@ -705,7 +764,10 @@ async function saveAnnotation() {
     id: uid(), docId: currentDoc.id, start, end,
     kind: selMode, color: selColor,
     note: $('#noteInput').value.trim(),
-    text: pendingRange.toString().slice(0, 200), created: Date.now()
+    text: pendingRange.toString().slice(0, 200), created: Date.now(),
+    quote: pendingRange.toString(),
+    prefix: art.textContent.slice(Math.max(0, start - 32), start),
+    suffix: art.textContent.slice(end, end + 32)
   };
   annots.push(a);
   await idb.put('annots', a);
