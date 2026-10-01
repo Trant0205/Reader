@@ -79,6 +79,14 @@ input{font-family:inherit}
 #themeSeg button + button{border-left:1px solid var(--accent)}
 #themeSeg button.on{background:var(--accent);color:#fff}
 
+/* 栏宽选择 */
+#widthSel{
+  font-family:inherit;font-size:12px;padding:5px 8px;color:var(--accent);
+  border:1px solid var(--accent);border-radius:4px;background:transparent;
+  outline:none;white-space:nowrap;
+}
+#widthSel option{color:var(--ink);background:var(--panel)}
+
 /* 备份菜单 */
 #exportMenu{
   display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:100;
@@ -333,6 +341,12 @@ input{font-family:inherit}
     <button data-t="read">阅读</button>
     <button data-t="night">夜读</button>
   </div>
+  <select id="widthSel" title="正文栏宽">
+    <option value="640px">窄栏</option>
+    <option value="760px" selected>适宽</option>
+    <option value="920px">宽栏</option>
+    <option value="none">全屏</option>
+  </select>
   <div id="searchBox">
     <input id="searchInput" type="text" placeholder="全文搜索…（回车搜索）">
   </div>
@@ -1168,6 +1182,19 @@ async function afterImport() {
     document.body.dataset.theme = t;
     document.querySelectorAll('#themeSeg button').forEach(x => x.classList.toggle('on', x.dataset.t === t));
   }
+})();
+
+/* ================= 栏宽 ================= */
+(function initWidth() {
+  const sel = $('#widthSel');
+  const apply = w => { $('#article').style.maxWidth = w; };
+  const saved = localStorage.getItem('dl-width');
+  if (saved) sel.value = saved;
+  apply(sel.value);
+  sel.onchange = () => {
+    apply(sel.value);
+    localStorage.setItem('dl-width', sel.value);
+  };
 })();
 
 /* ================= 启动 ================= */
