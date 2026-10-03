@@ -240,6 +240,10 @@ input{font-family:inherit}
 #annPop .ap-save{background:var(--accent)!important;color:#fff;border-color:var(--accent)!important}
 #annPop .ap-del{color:#a33}
 
+/* ---------- 编辑模式 ---------- */
+#article[contenteditable="true"]{outline:2px dashed var(--accent);outline-offset:10px;border-radius:4px}
+#editBtn.on{background:var(--accent);color:#fff}
+
 /* ---------- 搜索结果面板 ---------- */
 #searchPanel{
   position:fixed;top:52px;right:0;bottom:0;width:360px;z-index:80;background:var(--panel);
@@ -326,6 +330,8 @@ input{font-family:inherit}
   <div class="brand">道林书房</div>
   <button class="tbtn" id="uploadBtn">上传文档</button>
   <button class="tbtn" id="uploadDirBtn">导入文件夹</button>
+  <button class="tbtn" id="editBtn">编辑</button>
+  <button class="tbtn" id="cancelEditBtn" style="display:none">取消</button>
   <div class="spacer"></div>
   <div style="position:relative">
     <button class="tbtn" id="exportBtn" title="打包导出书库、进度、标注">备份 ▾</button>
@@ -448,6 +454,7 @@ let activeTag = '';
 let selColor = '1', selMode = 'hl';
 let pendingRange = null;
 let popAnnId = null;
+let editing = false;
 
 const $ = s => document.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -531,6 +538,7 @@ async function importFiles(files) {
       // 同名重传：替换内容，保留 id/标签/进度，标注重锚定
       exist.blob = new Blob([buf], { type: f.type });
       exist.text = text;
+      delete exist.html;
       await idb.put('docs', exist);
       // 锚定须在「渲染后文本」上进行，与标注偏移量同源
       let domText = '';
@@ -626,18 +634,26 @@ const styleMap = [
 async function openDoc(id) {
   const d = docs.find(x => x.id === id);
   if (!d) return;
+  if (editing) {
+    if (!confirm('文档正在编辑中，未保存的修改将丢失。确定离开吗？')) return;
+    endEdit();
+  }
   if (window.matchMedia('(max-width:720px)').matches) $('#library').classList.add('collapsed');
   currentDoc = d;
   renderDocList();
   $('#welcome').style.display = 'none';
   const art = $('#article');
   art.style.display = ''; art.innerHTML = '<p style="text-align:center;color:var(--ink-soft)">排版中…</p>';
-  const buf = await d.blob.arrayBuffer();
   let html;
-  try {
-    html = (await mammoth.convertToHtml({ arrayBuffer: buf }, { styleMap })).value;
-  } catch (e) {
-    art.innerHTML = '<p>解析失败：' + esc(e.message) + '</p>'; return;
+  if (d.html != null) {
+    html = d.html;                       // 已编辑过的内容直接显示
+  } else {
+    const buf = await d.blob.arrayBuffer();
+    try {
+      html = (await mammoth.convertToHtml({ arrayBuffer: buf }, { styleMap })).value;
+    } catch (e) {
+      art.innerHTML = '<p>解析失败：' + esc(e.message) + '</p>'; return;
+    }
   }
   art.innerHTML = html || '<p>（文档为空）</p>';
   // 标题编号 + 目录
@@ -740,7 +756,7 @@ document.addEventListener('mouseup', e => {
   if (selBar.contains(e.target) || annPop.contains(e.target)) return;
   setTimeout(() => {
     const sel = window.getSelection();
-    if (!currentDoc || sel.isCollapsed || !art.contains(sel.anchorNode)) { hideSelBar(); return; }
+    if (!currentDoc || editing || sel.isCollapsed || !art.contains(sel.anchorNode)) { hideSelBar(); return; }
     const range = sel.getRangeAt(0);
     pendingRange = range.cloneRange();
     const r = range.getBoundingClientRect();
@@ -890,6 +906,62 @@ function renderAnnPanel() {
     if (span) { span.scrollIntoView({ behavior: 'instant', block: 'center' }); span.classList.add('flash'); setTimeout(() => span.classList.remove('flash'), 1700); }
   });
 }
+
+/* ================= 编辑正文 ================= */
+function unwrapAnnSpans() {
+  art.querySelectorAll('span.ann').forEach(s => {
+    const p = s.parentNode;
+    while (s.firstChild) p.insertBefore(s.firstChild, s);
+    p.removeChild(s);
+  });
+  art.normalize();
+}
+
+function startEdit() {
+  unwrapAnnSpans();      // 去掉标注视觉层，标注数据保留
+  hideSelBar(); hideAnnPop();
+  art.contentEditable = 'true';
+  editing = true;
+  $('#editBtn').textContent = '保存';
+  $('#editBtn').classList.add('on');
+  $('#cancelEditBtn').style.display = '';
+  art.focus();
+}
+
+function endEdit() {
+  editing = false;
+  art.contentEditable = 'false';
+  $('#editBtn').textContent = '编辑';
+  $('#editBtn').classList.remove('on');
+  $('#cancelEditBtn').style.display = 'none';
+}
+
+async function saveEdit() {
+  if (!currentDoc) return;
+  art.contentEditable = 'false';
+  currentDoc.html = art.innerHTML;
+  currentDoc.text = art.textContent;
+  await idb.put('docs', currentDoc);
+  const dropped = await reanchorAnnots(currentDoc.id, currentDoc.text);
+  endEdit();
+  buildToc();
+  applyAllAnnots();
+  renderAnnPanel();
+  window.getSelection().removeAllRanges();
+  if (dropped) alert(`已保存修改；${dropped} 条标注因对应文字被改动或删除而移除。`);
+}
+
+async function cancelEdit() {
+  const id = currentDoc ? currentDoc.id : null;
+  endEdit();
+  if (id) await openDoc(id);
+}
+
+$('#editBtn').onclick = () => {
+  if (!currentDoc) { alert('请先打开一篇文档'); return; }
+  editing ? saveEdit() : startEdit();
+};
+$('#cancelEditBtn').onclick = cancelEdit;
 
 /* ================= 全文搜索 ================= */
 $('#searchInput').addEventListener('keydown', e => {
@@ -1047,7 +1119,7 @@ async function exportFull() {
       { name: 'manifest.json', data: enc.encode(JSON.stringify({
         app: 'daolin-shufang', version: 2, exportedAt: new Date().toISOString(),
         theme: localStorage.getItem('dl-theme') || 'read',
-        docs: docs.map(d => ({ id: d.id, name: d.name, tags: d.tags, ratio: d.ratio, added: d.added }))
+        docs: docs.map(d => ({ id: d.id, name: d.name, tags: d.tags, ratio: d.ratio, added: d.added, html: d.html }))
       })) },
       { name: 'annots.json', data: enc.encode(JSON.stringify(annots)) }
     ];
@@ -1094,7 +1166,7 @@ async function importZipBackup(buf) {
     const blob = new Blob([entry], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     let text = '';
     try { text = (await mammoth.extractRawText({ arrayBuffer: entry.buffer })).value; } catch (e) {}
-    const rec = { id: pd.id, name: pd.name, tags: pd.tags || [], ratio: pd.ratio || 0, added: pd.added || Date.now(), text, blob };
+    const rec = { id: pd.id, name: pd.name, tags: pd.tags || [], ratio: pd.ratio || 0, added: pd.added || Date.now(), text, blob, html: pd.html };
     const idx = docs.findIndex(d => d.id === rec.id);
     if (idx >= 0) docs[idx] = rec; else docs.push(rec);
     await idb.put('docs', rec);
@@ -1135,7 +1207,7 @@ async function importJsonBackup(data) {
   for (const pd of data.docs) {
     const rec = {
       id: pd.id, name: pd.name, tags: pd.tags || [], ratio: pd.ratio || 0,
-      added: pd.added || Date.now(), text: pd.text || '', blob: b64ToBlob(pd.b64)
+      added: pd.added || Date.now(), text: pd.text || '', blob: b64ToBlob(pd.b64), html: pd.html
     };
     const idx = docs.findIndex(d => d.id === rec.id);
     if (idx >= 0) docs[idx] = rec; else docs.push(rec);
