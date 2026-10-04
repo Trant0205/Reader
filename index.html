@@ -529,11 +529,14 @@ function renderDocList() {
       const opts = [...new Set(docs.flatMap(x => x.tags))].filter(t => t && !cur.includes(t)).sort();
       pick.innerHTML = opts.map(t => `<span class="tagopt" data-t="${esc(t)}">+ ${esc(t)}</span>`).join('');
       pick.style.display = opts.length ? '' : 'none';
-      pick.querySelectorAll('.tagopt').forEach(chip => chip.onclick = ev => {
+      pick.querySelectorAll('.tagopt').forEach(chip => chip.onclick = async ev => {
         ev.stopPropagation();
         const list2 = inp.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
         if (!list2.includes(chip.dataset.t)) list2.push(chip.dataset.t);
         inp.value = list2.join('，');
+        d.tags = [...new Set(list2)];
+        await idb.put('docs', d);   // 点选即保存，无需回车
+        renderTagBar();
         renderPick(); inp.focus();
       });
     };
