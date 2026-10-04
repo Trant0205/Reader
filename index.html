@@ -231,7 +231,7 @@ input{font-family:inherit}
 #noteRow{display:none;padding:6px 2px 2px;width:240px}
 #noteInput{
   width:100%;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;
-  background:#fff;outline:none;resize:none;rows:2;
+  background:#fff;outline:none;resize:none;line-height:1.5;min-height:52px;max-height:220px;overflow-y:auto;
 }
 
 /* ---------- 标注详情弹窗 ---------- */
@@ -240,7 +240,7 @@ input{font-family:inherit}
   border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 26px var(--shadow);padding:12px;
 }
 #annPop .ap-text{font-size:13px;color:var(--ink-soft);max-height:70px;overflow:hidden;margin-bottom:8px;border-left:3px solid var(--accent);padding-left:8px}
-#annPop textarea{width:100%;font-size:13px;padding:6px;border:1px solid var(--line);border-radius:4px;background:#fff;outline:none;resize:vertical;min-height:54px}
+#annPop textarea{width:100%;font-size:13px;padding:6px;border:1px solid var(--line);border-radius:4px;background:#fff;outline:none;resize:none;line-height:1.5;min-height:54px;max-height:320px;overflow-y:auto}
 #annPop .ap-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
 #annPop .ap-btns button{font-size:12px;padding:4px 12px;border-radius:4px;border:1px solid var(--line);background:#fff}
 #annPop .ap-save{background:var(--accent)!important;color:#fff;border-color:var(--accent)!important}
@@ -792,7 +792,7 @@ document.addEventListener('mouseup', e => {
     const r = range.getBoundingClientRect();
     const wrap = $('#readerWrap').getBoundingClientRect();
     selBar.style.display = 'flex';
-    $('#noteRow').style.display = 'none'; $('#noteInput').value = '';
+    $('#noteRow').style.display = 'none'; $('#noteInput').value = ''; $('#noteInput').style.height = '';
     let x = r.left - wrap.left + r.width / 2 - selBar.offsetWidth / 2;
     let y = r.top - wrap.top - selBar.offsetHeight - 10;
     x = Math.max(8, Math.min(x, wrap.width - selBar.offsetWidth - 8));
@@ -816,9 +816,18 @@ $('#noteToggle').onmousedown = e => {
   e.preventDefault();
   const row = $('#noteRow');
   row.style.display = row.style.display === 'block' ? 'none' : 'block';
-  if (row.style.display === 'block') $('#noteInput').focus();
+  if (row.style.display === 'block') { growTA($('#noteInput'), 220); $('#noteInput').focus(); }
 };
 $('#noteInput').addEventListener('mousedown', e => e.stopPropagation());
+
+/* 备注框随内容自动增高（含回车换行） */
+function growTA(el, max) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, max) + 'px';
+  el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
+}
+$('#noteInput').addEventListener('input', () => growTA($('#noteInput'), 220));
 
 /* 批量删除选区内的标注 */
 $('#delAnnBtn').onmousedown = async e => {
@@ -900,7 +909,9 @@ art.addEventListener('click', e => {
   if (!a) return;
   popAnnId = a.id;
   annPop.querySelector('.ap-text').textContent = a.text;
-  annPop.querySelector('textarea').value = a.note || '';
+  const apTa = annPop.querySelector('textarea');
+  apTa.value = a.note || '';
+  growTA(apTa, 320);
   const r = e.target.getBoundingClientRect();
   const wrap = $('#readerWrap').getBoundingClientRect();
   annPop.style.display = 'block';
@@ -908,6 +919,7 @@ art.addEventListener('click', e => {
   x = Math.max(8, Math.min(x, wrap.width - 296));
   annPop.style.left = x + 'px'; annPop.style.top = y + 'px';
 });
+annPop.querySelector('textarea').addEventListener('input', e => growTA(e.target, 320));
 annPop.querySelector('.ap-save').onclick = async () => {
   const a = annots.find(x => x.id === popAnnId);
   if (a) { a.note = annPop.querySelector('textarea').value.trim(); await idb.put('annots', a); }
