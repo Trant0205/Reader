@@ -948,6 +948,8 @@ function unwrapAnnSpans() {
 }
 
 function startEdit() {
+  const reader = $('#reader');
+  const sc = reader.scrollTop;          // 记录当前位置
   unwrapAnnSpans();      // 去掉标注视觉层，标注数据保留
   hideSelBar(); hideAnnPop();
   art.contentEditable = 'true';
@@ -955,7 +957,9 @@ function startEdit() {
   $('#editBtn').textContent = '保存';
   $('#editBtn').classList.add('on');
   $('#cancelEditBtn').style.display = '';
-  art.focus();
+  art.focus({ preventScroll: true });   // 聚焦但不重置滚动
+  reader.scrollTop = sc;
+  requestAnimationFrame(() => { reader.scrollTop = sc; });
 }
 
 function endEdit() {
