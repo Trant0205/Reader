@@ -138,6 +138,12 @@ input{font-family:inherit}
   width:100%;margin-top:5px;font-size:12px;padding:4px 6px;border:1px solid var(--accent);
   border-radius:3px;background:#fff;outline:none;
 }
+.tagpick{display:flex;flex-wrap:wrap;gap:4px;width:100%;margin-top:4px}
+.tagopt{
+  font-size:11px;padding:2px 8px;border-radius:9px;cursor:pointer;
+  background:var(--paper-deep);color:var(--ink-soft);border:1px solid var(--line);
+}
+.tagopt:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 #libEmpty{padding:30px 16px;color:var(--ink-soft);font-size:13px;text-align:center;line-height:2}
 
 /* 阅读区 */
@@ -507,11 +513,32 @@ function renderDocList() {
     const item = b.closest('.docitem');
     if (item.querySelector('.taginput')) return;
     const d = docs.find(x => x.id === b.dataset.id);
+    const dtags = item.querySelector('.dtags');
     const inp = document.createElement('input');
     inp.className = 'taginput'; inp.value = d.tags.join('，');
-    inp.placeholder = '逗号分隔多个标签，回车保存';
-    item.querySelector('.dtags').appendChild(inp); inp.focus();
+    inp.placeholder = '选择或输入标签，回车保存';
+    dtags.appendChild(inp); inp.focus();
     inp.onclick = ev => ev.stopPropagation();
+    // 已有标签快捷选择
+    const pick = document.createElement('div');
+    pick.className = 'tagpick';
+    pick.onclick = ev => ev.stopPropagation();
+    dtags.appendChild(pick);
+    const renderPick = () => {
+      const cur = inp.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+      const opts = [...new Set(docs.flatMap(x => x.tags))].filter(t => t && !cur.includes(t)).sort();
+      pick.innerHTML = opts.map(t => `<span class="tagopt" data-t="${esc(t)}">+ ${esc(t)}</span>`).join('');
+      pick.style.display = opts.length ? '' : 'none';
+      pick.querySelectorAll('.tagopt').forEach(chip => chip.onclick = ev => {
+        ev.stopPropagation();
+        const list2 = inp.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+        if (!list2.includes(chip.dataset.t)) list2.push(chip.dataset.t);
+        inp.value = list2.join('，');
+        renderPick(); inp.focus();
+      });
+    };
+    renderPick();
+    inp.oninput = renderPick;
     inp.onkeydown = async ev => {
       if (ev.key !== 'Enter') return;
       d.tags = [...new Set(inp.value.split(/[,，]/).map(s => s.trim()).filter(Boolean))];
