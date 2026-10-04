@@ -911,10 +911,11 @@ art.addEventListener('click', e => {
   annPop.querySelector('.ap-text').textContent = a.text;
   const apTa = annPop.querySelector('textarea');
   apTa.value = a.note || '';
-  growTA(apTa, 320);
   const r = e.target.getBoundingClientRect();
   const wrap = $('#readerWrap').getBoundingClientRect();
   annPop.style.display = 'block';
+  growTA(apTa, 320);                                   // 显示后再按内容撑高
+  requestAnimationFrame(() => growTA(apTa, 320));      // 双保险
   let x = r.left - wrap.left, y = r.bottom - wrap.top + 8;
   x = Math.max(8, Math.min(x, wrap.width - 296));
   annPop.style.left = x + 'px'; annPop.style.top = y + 'px';
