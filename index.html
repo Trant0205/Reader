@@ -778,7 +778,7 @@ document.addEventListener('mouseup', e => {
   }, 10);
 });
 document.addEventListener('mousedown', e => {
-  if (!annPop.contains(e.target) && !(e.target.classList && e.target.classList.contains('ann'))) hideAnnPop();
+  if (!annPop.contains(e.target) && !(e.target.classList && e.target.classList.contains('ann'))) closeAnnPop();
 });
 function hideAnnPop() { annPop.style.display = 'none'; popAnnId = null; pendingRange = null; }
 
@@ -793,7 +793,7 @@ function growTA(el, max) {
 /* 打开标注弹窗：a=null 为新建（用 pendingRange），否则编辑现有标注 */
 function openAnnPop(a, rect) {
   popAnnId = a ? a.id : null;
-  popKind = a ? (a.kind || 'hl') : 'hl';
+  popKind = a ? (a.kind || 'hl') : null;                                  // 新建时未选类型
   popColor = a ? (a.color || '4') : '4';                                  // 默认蓝色
   annPop.querySelector('.ap-text').textContent = a ? (a.quote || a.text || '') : pendingRange.toString();
   annPop.querySelector('textarea').value = a ? (a.note || '') : '';
@@ -812,26 +812,11 @@ function openAnnPop(a, rect) {
   growTA(annPop.querySelector('textarea'), 320);
 }
 
-async function saveAnnPop() {
-  const note = annPop.querySelector('textarea').value.trim();
-  if (popAnnId) {                                   // 改现有标注
+/* 关闭弹窗：若已生成/编辑标注，则把备注一并保存 */
+async function closeAnnPop() {
+  if (popAnnId) {
     const a = annots.find(x => x.id === popAnnId);
-    if (a) { a.note = note; a.kind = popKind; a.color = popColor; await idb.put('annots', a); }
-  } else if (pendingRange && currentDoc) {          // 新建标注
-    const { start, end } = rangeOffsets(pendingRange);
-    if (end > start) {
-      const quote = pendingRange.toString();
-      const a = {
-        id: uid(), docId: currentDoc.id, start, end,
-        kind: popKind, color: popColor, note,
-        text: quote.slice(0, 200), created: Date.now(),
-        quote,
-        prefix: art.textContent.slice(Math.max(0, start - 32), start),
-        suffix: art.textContent.slice(end, end + 32)
-      };
-      annots.push(a);
-      await idb.put('annots', a);
-    }
+    if (a) { a.note = annPop.querySelector('textarea').value.trim(); await idb.put('annots', a); }
   }
   window.getSelection().removeAllRanges();
   hideAnnPop();
@@ -886,10 +871,34 @@ art.addEventListener('click', e => {
 });
 annPop.querySelector('textarea').addEventListener('input', e => growTA(e.target, 320));
 annPop.querySelectorAll('.apmode').forEach(b => b.onclick = async () => {
-  popKind = b.dataset.m;
+  const mode = b.dataset.m;
+  popKind = mode;
   annPop.querySelectorAll('.apmode').forEach(x => x.classList.toggle('on', x === b));
-  const a = popAnnId ? annots.find(x => x.id === popAnnId) : null;
-  if (a) { a.kind = popKind; await idb.put('annots', a); refreshAnnots(); }
+  if (!popAnnId) {
+    // 首次点选类型：以当前颜色（默认蓝）直接生成标注，窗口保持
+    if (!pendingRange || !currentDoc) return;
+    const { start, end } = rangeOffsets(pendingRange);
+    if (end <= start) return;
+    const quote = pendingRange.toString();
+    const a = {
+      id: uid(), docId: currentDoc.id, start, end,
+      kind: mode, color: popColor, note: '',
+      text: quote.slice(0, 200), created: Date.now(),
+      quote,
+      prefix: art.textContent.slice(Math.max(0, start - 32), start),
+      suffix: art.textContent.slice(end, end + 32)
+    };
+    annots.push(a);
+    await idb.put('annots', a);
+    popAnnId = a.id;
+    pendingRange = null;
+    window.getSelection().removeAllRanges();
+    annPop.querySelector('.ap-del').textContent = '删除标注';
+    refreshAnnots();
+  } else {
+    const a = annots.find(x => x.id === popAnnId);
+    if (a) { a.kind = mode; await idb.put('annots', a); refreshAnnots(); }
+  }
 });
 annPop.querySelectorAll('.apdot').forEach(d => d.onclick = async () => {
   popColor = d.dataset.c;
@@ -897,7 +906,7 @@ annPop.querySelectorAll('.apdot').forEach(d => d.onclick = async () => {
   const a = popAnnId ? annots.find(x => x.id === popAnnId) : null;
   if (a) { a.color = popColor; await idb.put('annots', a); refreshAnnots(); }
 });
-annPop.querySelector('.ap-save').onclick = saveAnnPop;
+annPop.querySelector('.ap-save').onclick = closeAnnPop;
 annPop.querySelector('.ap-del').onclick = async () => {
   if (popAnnId) { annots = annots.filter(x => x.id !== popAnnId); await idb.del('annots', popAnnId); }
   hideAnnPop(); refreshAnnots();
