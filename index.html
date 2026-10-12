@@ -245,6 +245,15 @@ input{font-family:inherit}
 #annPop .ap-btns button{font-size:12px;padding:4px 12px;border-radius:4px;border:1px solid var(--line);background:#fff}
 #annPop .ap-save{background:var(--accent)!important;color:#fff;border-color:var(--accent)!important}
 #annPop .ap-del{color:#a33}
+#annPop .ap-ctl{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+#annPop .ap-ctl .apmode{font-size:12px;border:1px solid var(--line);border-radius:4px;padding:2px 8px;background:#fff;color:var(--ink-soft)}
+#annPop .ap-ctl .apmode.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#annPop .apdot{width:18px;height:18px;border-radius:50%;border:1px solid rgba(0,0,0,.15);cursor:pointer}
+#annPop .apdot.on{box-shadow:0 0 0 2px var(--accent)}
+#annPop .apdot.d1{background:rgba(255,224,102,.85)}
+#annPop .apdot.d2{background:rgba(150,214,160,.85)}
+#annPop .apdot.d3{background:rgba(255,179,200,.85)}
+#annPop .apdot.d4{background:rgba(157,199,255,.85)}
 
 /* ---------- 编辑模式 ---------- */
 #article[contenteditable="true"]{outline:2px dashed var(--accent);outline-offset:10px;border-radius:4px}
@@ -387,20 +396,23 @@ input{font-family:inherit}
 
     <!-- 选中工具条 -->
     <div id="selBar">
-      <span class="dot d1" data-c="1"></span>
-      <span class="dot d2" data-c="2"></span>
-      <span class="dot d3" data-c="3"></span>
-      <span class="dot d4" data-c="4"></span>
-      <button class="modebtn on" data-m="hl">高光</button>
+      <button class="modebtn" data-m="hl">高光</button>
       <button class="modebtn" data-m="ul">下划线</button>
-      <button class="modebtn" id="noteToggle">备注</button>
       <button class="modebtn" id="delAnnBtn" style="color:#a33">删除标记</button>
-      <div id="noteRow"><textarea id="noteInput" placeholder="写点备注…（可留空直接点颜色保存）"></textarea></div>
+      <div id="noteRow"><textarea id="noteInput" placeholder="写点备注…（回车保存，Shift+回车换行）"></textarea></div>
     </div>
 
     <!-- 标注详情弹窗 -->
     <div id="annPop">
       <div class="ap-text"></div>
+      <div class="ap-ctl">
+        <button class="apmode" data-m="hl">高光</button>
+        <button class="apmode" data-m="ul">下划线</button>
+        <span class="apdot d1" data-c="1"></span>
+        <span class="apdot d2" data-c="2"></span>
+        <span class="apdot d3" data-c="3"></span>
+        <span class="apdot d4" data-c="4"></span>
+      </div>
       <textarea placeholder="备注…"></textarea>
       <div class="ap-btns">
         <button class="ap-del">删除标注</button>
@@ -461,6 +473,7 @@ let selColor = '1', selMode = 'hl';
 let pendingRange = null;
 let popAnnId = null;
 let editing = false;
+let activeAnnId = null;
 
 const $ = s => document.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -807,18 +820,13 @@ document.addEventListener('mousedown', e => {
 function hideSelBar() { selBar.style.display = 'none'; pendingRange = null; }
 function hideAnnPop() { annPop.style.display = 'none'; popAnnId = null; }
 
-selBar.querySelectorAll('.dot').forEach(d => d.onmousedown = e => { e.preventDefault(); selColor = d.dataset.c; saveAnnotation(); });
 selBar.querySelectorAll('.modebtn[data-m]').forEach(b => b.onmousedown = e => {
-  e.preventDefault(); selMode = b.dataset.m;
-  selBar.querySelectorAll('.modebtn[data-m]').forEach(x => x.classList.toggle('on', x === b));
+  e.preventDefault(); createAnnot(b.dataset.m);
 });
-$('#noteToggle').onmousedown = e => {
-  e.preventDefault();
-  const row = $('#noteRow');
-  row.style.display = row.style.display === 'block' ? 'none' : 'block';
-  if (row.style.display === 'block') { growTA($('#noteInput'), 220); $('#noteInput').focus(); }
-};
 $('#noteInput').addEventListener('mousedown', e => e.stopPropagation());
+$('#noteInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitNote(); }
+});
 
 /* 备注框随内容自动增高（含回车换行） */
 function growTA(el, max) {
@@ -843,24 +851,40 @@ $('#delAnnBtn').onmousedown = async e => {
   refreshAnnots();
 };
 
-async function saveAnnotation() {
+async function createAnnot(mode) {
   if (!pendingRange || !currentDoc) return;
   const { start, end } = rangeOffsets(pendingRange);
   if (end <= start) { hideSelBar(); return; }
+  const quote = pendingRange.toString();
   const a = {
     id: uid(), docId: currentDoc.id, start, end,
-    kind: selMode, color: selColor,
-    note: $('#noteInput').value.trim(),
-    text: pendingRange.toString().slice(0, 200), created: Date.now(),
-    quote: pendingRange.toString(),
+    kind: mode, color: '4',                        // 默认蓝色
+    note: '', text: quote.slice(0, 200), created: Date.now(),
+    quote,
     prefix: art.textContent.slice(Math.max(0, start - 32), start),
     suffix: art.textContent.slice(end, end + 32)
   };
   annots.push(a);
   await idb.put('annots', a);
   window.getSelection().removeAllRanges();
-  hideSelBar();
+  pendingRange = null;
   refreshAnnots();
+  // 标注已生成，紧接着弹出备注框
+  activeAnnId = a.id;
+  $('#noteRow').style.display = 'block';
+  $('#noteInput').value = '';
+  growTA($('#noteInput'), 220);
+  $('#noteInput').focus();
+}
+
+async function commitNote() {
+  if (activeAnnId) {
+    const a = annots.find(x => x.id === activeAnnId);
+    if (a) { a.note = $('#noteInput').value.trim(); await idb.put('annots', a); }
+    activeAnnId = null;
+    refreshAnnots();
+  }
+  hideSelBar();
 }
 
 function wrapAnnot(a) {
@@ -911,6 +935,7 @@ art.addEventListener('click', e => {
   annPop.querySelector('.ap-text').textContent = a.text;
   const apTa = annPop.querySelector('textarea');
   apTa.value = a.note || '';
+  syncAnnCtl(a);
   const r = e.target.getBoundingClientRect();
   const wrap = $('#readerWrap').getBoundingClientRect();
   annPop.style.display = 'block';
@@ -921,6 +946,24 @@ art.addEventListener('click', e => {
   annPop.style.left = x + 'px'; annPop.style.top = y + 'px';
 });
 annPop.querySelector('textarea').addEventListener('input', e => growTA(e.target, 320));
+function syncAnnCtl(a) {
+  annPop.querySelectorAll('.apmode').forEach(b => b.classList.toggle('on', b.dataset.m === a.kind));
+  annPop.querySelectorAll('.apdot').forEach(d => d.classList.toggle('on', d.dataset.c === a.color));
+}
+annPop.querySelectorAll('.apmode').forEach(b => b.onclick = async () => {
+  const a = annots.find(x => x.id === popAnnId);
+  if (!a) return;
+  a.kind = b.dataset.m;
+  await idb.put('annots', a);
+  syncAnnCtl(a); refreshAnnots();
+});
+annPop.querySelectorAll('.apdot').forEach(d => d.onclick = async () => {
+  const a = annots.find(x => x.id === popAnnId);
+  if (!a) return;
+  a.color = d.dataset.c;
+  await idb.put('annots', a);
+  syncAnnCtl(a); refreshAnnots();
+});
 annPop.querySelector('.ap-save').onclick = async () => {
   const a = annots.find(x => x.id === popAnnId);
   if (a) { a.note = annPop.querySelector('textarea').value.trim(); await idb.put('annots', a); }
