@@ -214,26 +214,6 @@ input{font-family:inherit}
 .toc-item.lv3{padding-left:44px;font-size:13px;color:var(--ink-soft)}
 .toc-empty{padding:20px;color:var(--ink-soft);font-size:13px;text-align:center}
 
-/* ---------- 选中标注工具条 ---------- */
-#selBar{
-  position:absolute;z-index:90;display:none;background:#fffdf6;border:1px solid var(--line);
-  border-radius:8px;box-shadow:0 6px 22px var(--shadow);padding:8px 10px;
-  align-items:center;gap:8px;
-}
-#selBar .dot{width:20px;height:20px;border-radius:50%;border:1px solid rgba(0,0,0,.15)}
-#selBar .dot.d1{background:rgba(255,224,102,.85)}#selBar .dot.d2{background:rgba(150,214,160,.85)}
-#selBar .dot.d3{background:rgba(255,179,200,.85)}#selBar .dot.d4{background:rgba(157,199,255,.85)}
-#selBar .modebtn{
-  font-size:12px;border:1px solid var(--line);border-radius:4px;padding:3px 8px;background:#fff;
-  color:var(--ink-soft);
-}
-#selBar .modebtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-#noteRow{display:none;padding:6px 2px 2px;width:240px}
-#noteInput{
-  width:100%;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;
-  background:#fff;outline:none;resize:none;line-height:1.5;min-height:52px;max-height:220px;overflow-y:auto;
-}
-
 /* ---------- 标注详情弹窗 ---------- */
 #annPop{
   position:absolute;z-index:95;display:none;width:280px;background:#fffdf6;
@@ -331,8 +311,6 @@ input{font-family:inherit}
   #article{padding:36px 20px 90px;font-size:16px;line-height:1.95;text-align:left}
   #article h1{font-size:22px}
   #article h2{font-size:19px}
-  #selBar{max-width:calc(100vw - 16px);flex-wrap:wrap}
-  #noteRow{width:min(240px,calc(100vw - 60px))}
   #annPop{width:min(280px,calc(100vw - 24px))}
   #searchPanel{width:100%}
   #annPanel{width:calc(100vw - 32px);right:16px}
@@ -392,14 +370,6 @@ input{font-family:inherit}
         所有数据仅保存在本机浏览器中。</p>
       </div>
       <div id="article" style="display:none"></div>
-    </div>
-
-    <!-- 选中工具条 -->
-    <div id="selBar">
-      <button class="modebtn" data-m="hl">高光</button>
-      <button class="modebtn" data-m="ul">下划线</button>
-      <button class="modebtn" id="delAnnBtn" style="color:#a33">删除标记</button>
-      <div id="noteRow"><textarea id="noteInput" placeholder="写点备注…（回车保存，Shift+回车换行）"></textarea></div>
     </div>
 
     <!-- 标注详情弹窗 -->
@@ -473,7 +443,7 @@ let selColor = '1', selMode = 'hl';
 let pendingRange = null;
 let popAnnId = null;
 let editing = false;
-let activeAnnId = null;
+let popKind = 'hl', popColor = '4';
 
 const $ = s => document.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -782,7 +752,7 @@ $('#reader').addEventListener('scroll', () => {
 </script>
 <script>
 /* ================= 标注 ================= */
-const art = $('#article'), selBar = $('#selBar'), annPop = $('#annPop');
+const art = $('#article'), annPop = $('#annPop');
 
 function rangeOffsets(range) {
   const pre = document.createRange();
@@ -796,37 +766,21 @@ function rangeOffsets(range) {
 }
 
 document.addEventListener('mouseup', e => {
-  if (selBar.contains(e.target) || annPop.contains(e.target)) return;
+  if (annPop.contains(e.target)) return;
+  if (e.target.classList && e.target.classList.contains('ann')) return;   // 点标注走 click 逻辑
   setTimeout(() => {
     const sel = window.getSelection();
-    if (!currentDoc || editing || sel.isCollapsed || !art.contains(sel.anchorNode)) { hideSelBar(); return; }
+    if (!currentDoc || editing || !sel || sel.isCollapsed || !art.contains(sel.anchorNode)) return;
     const range = sel.getRangeAt(0);
+    if (!range.toString().trim()) return;
     pendingRange = range.cloneRange();
-    const r = range.getBoundingClientRect();
-    const wrap = $('#readerWrap').getBoundingClientRect();
-    selBar.style.display = 'flex';
-    $('#noteRow').style.display = 'none'; $('#noteInput').value = ''; $('#noteInput').style.height = '';
-    let x = r.left - wrap.left + r.width / 2 - selBar.offsetWidth / 2;
-    let y = r.top - wrap.top - selBar.offsetHeight - 10;
-    x = Math.max(8, Math.min(x, wrap.width - selBar.offsetWidth - 8));
-    if (y < 8) y = r.bottom - wrap.top + 10;
-    selBar.style.left = x + 'px'; selBar.style.top = y + 'px';
+    openAnnPop(null, range.getBoundingClientRect());
   }, 10);
 });
 document.addEventListener('mousedown', e => {
-  if (!selBar.contains(e.target)) hideSelBar();
-  if (!annPop.contains(e.target) && !e.target.classList.contains('ann')) hideAnnPop();
+  if (!annPop.contains(e.target) && !(e.target.classList && e.target.classList.contains('ann'))) hideAnnPop();
 });
-function hideSelBar() { selBar.style.display = 'none'; pendingRange = null; }
-function hideAnnPop() { annPop.style.display = 'none'; popAnnId = null; }
-
-selBar.querySelectorAll('.modebtn[data-m]').forEach(b => b.onmousedown = e => {
-  e.preventDefault(); createAnnot(b.dataset.m);
-});
-$('#noteInput').addEventListener('mousedown', e => e.stopPropagation());
-$('#noteInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitNote(); }
-});
+function hideAnnPop() { annPop.style.display = 'none'; popAnnId = null; pendingRange = null; }
 
 /* 备注框随内容自动增高（含回车换行） */
 function growTA(el, max) {
@@ -835,56 +789,53 @@ function growTA(el, max) {
   el.style.height = Math.min(el.scrollHeight, max) + 'px';
   el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
 }
-$('#noteInput').addEventListener('input', () => growTA($('#noteInput'), 220));
 
-/* 批量删除选区内的标注 */
-$('#delAnnBtn').onmousedown = async e => {
-  e.preventDefault();
-  if (!pendingRange || !currentDoc) { hideSelBar(); return; }
-  const { start, end } = rangeOffsets(pendingRange);
-  const hit = annots.filter(a => a.docId === currentDoc.id && a.start < end && a.end > start);
-  if (!hit.length) { hideSelBar(); return; }
-  for (const a of hit) await idb.del('annots', a.id);
-  annots = annots.filter(a => !hit.includes(a));
-  window.getSelection().removeAllRanges();
-  hideSelBar();
-  refreshAnnots();
-};
-
-async function createAnnot(mode) {
-  if (!pendingRange || !currentDoc) return;
-  const { start, end } = rangeOffsets(pendingRange);
-  if (end <= start) { hideSelBar(); return; }
-  const quote = pendingRange.toString();
-  const a = {
-    id: uid(), docId: currentDoc.id, start, end,
-    kind: mode, color: '4',                        // 默认蓝色
-    note: '', text: quote.slice(0, 200), created: Date.now(),
-    quote,
-    prefix: art.textContent.slice(Math.max(0, start - 32), start),
-    suffix: art.textContent.slice(end, end + 32)
-  };
-  annots.push(a);
-  await idb.put('annots', a);
-  window.getSelection().removeAllRanges();
-  pendingRange = null;
-  refreshAnnots();
-  // 标注已生成，紧接着弹出备注框
-  activeAnnId = a.id;
-  $('#noteRow').style.display = 'block';
-  $('#noteInput').value = '';
-  growTA($('#noteInput'), 220);
-  $('#noteInput').focus();
+/* 打开标注弹窗：a=null 为新建（用 pendingRange），否则编辑现有标注 */
+function openAnnPop(a, rect) {
+  popAnnId = a ? a.id : null;
+  popKind = a ? (a.kind || 'hl') : 'hl';
+  popColor = a ? (a.color || '4') : '4';                                  // 默认蓝色
+  annPop.querySelector('.ap-text').textContent = a ? (a.quote || a.text || '') : pendingRange.toString();
+  annPop.querySelector('textarea').value = a ? (a.note || '') : '';
+  annPop.querySelector('.ap-del').textContent = a ? '删除标注' : '取消';
+  annPop.querySelectorAll('.apmode').forEach(b => b.classList.toggle('on', b.dataset.m === popKind));
+  annPop.querySelectorAll('.apdot').forEach(d => d.classList.toggle('on', d.dataset.c === popColor));
+  const wrap = $('#readerWrap').getBoundingClientRect();
+  annPop.style.display = 'block';
+  const h = annPop.offsetHeight;
+  let x = rect.left - wrap.left;
+  let y = rect.bottom - wrap.top + 8;
+  if (y + h > wrap.height) y = rect.top - wrap.top - h - 8;
+  if (y < 8) y = 8;
+  x = Math.max(8, Math.min(x, wrap.width - annPop.offsetWidth - 8));
+  annPop.style.left = x + 'px'; annPop.style.top = y + 'px';
+  growTA(annPop.querySelector('textarea'), 320);
 }
 
-async function commitNote() {
-  if (activeAnnId) {
-    const a = annots.find(x => x.id === activeAnnId);
-    if (a) { a.note = $('#noteInput').value.trim(); await idb.put('annots', a); }
-    activeAnnId = null;
-    refreshAnnots();
+async function saveAnnPop() {
+  const note = annPop.querySelector('textarea').value.trim();
+  if (popAnnId) {                                   // 改现有标注
+    const a = annots.find(x => x.id === popAnnId);
+    if (a) { a.note = note; a.kind = popKind; a.color = popColor; await idb.put('annots', a); }
+  } else if (pendingRange && currentDoc) {          // 新建标注
+    const { start, end } = rangeOffsets(pendingRange);
+    if (end > start) {
+      const quote = pendingRange.toString();
+      const a = {
+        id: uid(), docId: currentDoc.id, start, end,
+        kind: popKind, color: popColor, note,
+        text: quote.slice(0, 200), created: Date.now(),
+        quote,
+        prefix: art.textContent.slice(Math.max(0, start - 32), start),
+        suffix: art.textContent.slice(end, end + 32)
+      };
+      annots.push(a);
+      await idb.put('annots', a);
+    }
   }
-  hideSelBar();
+  window.getSelection().removeAllRanges();
+  hideAnnPop();
+  refreshAnnots();
 }
 
 function wrapAnnot(a) {
@@ -931,47 +882,24 @@ art.addEventListener('click', e => {
   if (!e.target.classList.contains('ann')) return;
   const a = annots.find(x => x.id === e.target.dataset.aid);
   if (!a) return;
-  popAnnId = a.id;
-  annPop.querySelector('.ap-text').textContent = a.text;
-  const apTa = annPop.querySelector('textarea');
-  apTa.value = a.note || '';
-  syncAnnCtl(a);
-  const r = e.target.getBoundingClientRect();
-  const wrap = $('#readerWrap').getBoundingClientRect();
-  annPop.style.display = 'block';
-  growTA(apTa, 320);                                   // 显示后再按内容撑高
-  requestAnimationFrame(() => growTA(apTa, 320));      // 双保险
-  let x = r.left - wrap.left, y = r.bottom - wrap.top + 8;
-  x = Math.max(8, Math.min(x, wrap.width - 296));
-  annPop.style.left = x + 'px'; annPop.style.top = y + 'px';
+  openAnnPop(a, e.target.getBoundingClientRect());
 });
 annPop.querySelector('textarea').addEventListener('input', e => growTA(e.target, 320));
-function syncAnnCtl(a) {
-  annPop.querySelectorAll('.apmode').forEach(b => b.classList.toggle('on', b.dataset.m === a.kind));
-  annPop.querySelectorAll('.apdot').forEach(d => d.classList.toggle('on', d.dataset.c === a.color));
-}
 annPop.querySelectorAll('.apmode').forEach(b => b.onclick = async () => {
-  const a = annots.find(x => x.id === popAnnId);
-  if (!a) return;
-  a.kind = b.dataset.m;
-  await idb.put('annots', a);
-  syncAnnCtl(a); refreshAnnots();
+  popKind = b.dataset.m;
+  annPop.querySelectorAll('.apmode').forEach(x => x.classList.toggle('on', x === b));
+  const a = popAnnId ? annots.find(x => x.id === popAnnId) : null;
+  if (a) { a.kind = popKind; await idb.put('annots', a); refreshAnnots(); }
 });
 annPop.querySelectorAll('.apdot').forEach(d => d.onclick = async () => {
-  const a = annots.find(x => x.id === popAnnId);
-  if (!a) return;
-  a.color = d.dataset.c;
-  await idb.put('annots', a);
-  syncAnnCtl(a); refreshAnnots();
+  popColor = d.dataset.c;
+  annPop.querySelectorAll('.apdot').forEach(x => x.classList.toggle('on', x === d));
+  const a = popAnnId ? annots.find(x => x.id === popAnnId) : null;
+  if (a) { a.color = popColor; await idb.put('annots', a); refreshAnnots(); }
 });
-annPop.querySelector('.ap-save').onclick = async () => {
-  const a = annots.find(x => x.id === popAnnId);
-  if (a) { a.note = annPop.querySelector('textarea').value.trim(); await idb.put('annots', a); }
-  hideAnnPop(); refreshAnnots();
-};
+annPop.querySelector('.ap-save').onclick = saveAnnPop;
 annPop.querySelector('.ap-del').onclick = async () => {
-  annots = annots.filter(x => x.id !== popAnnId);
-  await idb.del('annots', popAnnId);
+  if (popAnnId) { annots = annots.filter(x => x.id !== popAnnId); await idb.del('annots', popAnnId); }
   hideAnnPop(); refreshAnnots();
 };
 
@@ -1007,7 +935,7 @@ function startEdit() {
   const reader = $('#reader');
   const sc = reader.scrollTop;          // 记录当前位置
   unwrapAnnSpans();      // 去掉标注视觉层，标注数据保留
-  hideSelBar(); hideAnnPop();
+  hideAnnPop();
   art.contentEditable = 'true';
   editing = true;
   $('#editBtn').textContent = '保存';
