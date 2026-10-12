@@ -383,7 +383,7 @@ input{font-family:inherit}
         <span class="apdot d3" data-c="3"></span>
         <span class="apdot d4" data-c="4"></span>
       </div>
-      <textarea placeholder="备注…"></textarea>
+      <textarea placeholder="备注…（Enter 保存并关闭，Ctrl+Enter 换行）"></textarea>
       <div class="ap-btns">
         <button class="ap-del">删除标注</button>
         <button class="ap-save">保存备注</button>
@@ -870,6 +870,12 @@ art.addEventListener('click', e => {
   openAnnPop(a, e.target.getBoundingClientRect());
 });
 annPop.querySelector('textarea').addEventListener('input', e => growTA(e.target, 320));
+annPop.querySelector('textarea').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (e.ctrlKey || e.metaKey || e.shiftKey) return;   // Ctrl/Cmd/Shift+Enter：换行
+  e.preventDefault();
+  closeAnnPop();                                      // Enter：保存并关闭弹窗
+});
 annPop.querySelectorAll('.apmode').forEach(b => b.onclick = async () => {
   const mode = b.dataset.m;
   popKind = mode;
