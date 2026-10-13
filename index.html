@@ -128,6 +128,13 @@ input{font-family:inherit}
 .docitem .tag-edit{
   font-size:11px;color:var(--accent);border:none;background:none;padding:1px 4px;text-decoration:underline;
 }
+.docitem .rename-edit{
+  font-size:11px;color:var(--accent);border:none;background:none;padding:1px 4px;text-decoration:underline;
+}
+.renameinput{
+  width:100%;font-size:14px;padding:3px 6px;border:1px solid var(--accent);
+  border-radius:3px;background:#fff;outline:none;font-family:inherit;
+}
 .docitem .del{
   position:absolute;top:6px;right:6px;border:none;background:none;color:#b09a6a;
   font-size:14px;display:none;
@@ -472,12 +479,13 @@ function renderDocList() {
       <div class="dtags">
         ${d.tags.map(t => `<span class="mini">${esc(t)}</span>`).join('')}
         <button class="tag-edit" data-id="${d.id}">✎ 标签</button>
+        <button class="rename-edit" data-id="${d.id}">✎ 标题</button>
       </div>
       <button class="del" data-id="${d.id}" title="删除">✕</button>
     </div>`).join('');
   list.querySelectorAll('.docitem').forEach(el => {
     el.onclick = e => {
-      if (e.target.classList.contains('del') || e.target.classList.contains('tag-edit') || e.target.classList.contains('taginput')) return;
+      if (e.target.classList.contains('del') || e.target.classList.contains('tag-edit') || e.target.classList.contains('rename-edit') || e.target.classList.contains('taginput') || e.target.classList.contains('renameinput')) return;
       openDoc(el.dataset.id);
     };
   });
@@ -490,6 +498,34 @@ function renderDocList() {
     docs = docs.filter(d => d.id !== b.dataset.id);
     if (currentDoc && currentDoc.id === b.dataset.id) { currentDoc = null; showWelcome(); }
     renderTagBar(); renderDocList();
+  });
+  list.querySelectorAll('.rename-edit').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const item = b.closest('.docitem');
+    if (item.querySelector('.renameinput')) return;
+    const d = docs.find(x => x.id === b.dataset.id);
+    const nameEl = item.querySelector('.dname');
+    const inp = document.createElement('input');
+    inp.className = 'renameinput'; inp.value = d.name;
+    nameEl.style.display = 'none';
+    nameEl.parentNode.insertBefore(inp, nameEl);
+    inp.focus(); inp.select();
+    inp.onclick = ev => ev.stopPropagation();
+    let done = false;
+    const commit = async save => {
+      if (done) return; done = true;
+      if (save) {
+        const v = inp.value.trim();
+        if (v && v !== d.name) { d.name = v; await idb.put('docs', d); }
+      }
+      renderDocList();
+    };
+    inp.onkeydown = ev => {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') { ev.preventDefault(); commit(true); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); commit(false); }
+    };
+    inp.onblur = () => commit(true);
   });
   list.querySelectorAll('.tag-edit').forEach(b => b.onclick = e => {
     e.stopPropagation();
